@@ -40,4 +40,6 @@ jobs:
       run: chmod +x gradlew
 
     - name: Compile Debug Kotlin
-      run: ./gradlew compileDebugKotlin
+      run: |-
+        printenv 
+        ./gradlew compileDebugKotlin
