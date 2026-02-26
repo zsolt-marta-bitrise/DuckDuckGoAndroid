@@ -39,7 +39,23 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Enable Cache
+      env:            
+          BITRISE_BUILD_CACHE_AUTH_TOKEN: ${{ secrets.BITRISE_BUILD_CACHE_AUTH_TOKEN }}
+          BITRISE_BUILD_CACHE_WORKSPACE_ID: ${{ secrets.BITRISE_BUILD_CACHE_WORKSPACE_ID }}
+      run: |
+        #!/usr/bin/env bash
+        set -euxo pipefail
+
+        # download Bitrise Build Cache CLI
+        curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v1.1.0-alpha1
+
+
+        # run the CLI to enable Bitrise build cache for Gradle
+        /tmp/bin/bitrise-build-cache activate gradle -d --cache --cache-push
+
     - name: Compile Debug Kotlin
       run: |-
         printenv 
+        
         ./gradlew compileDebugKotlin
