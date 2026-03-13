@@ -34,6 +34,7 @@ plugins {
     id 'org.jetbrains.dokka'
     id 'com.osacky.fulladle'
     id 'org.jetbrains.kotlin.android' apply false
+    id 'org.jetbrains.kotlin.plugin.compose' apply false
     id 'com.google.devtools.ksp' apply false
     id 'com.diffplug.spotless' apply false
 }
@@ -115,7 +116,7 @@ subprojects {
                     }
 
                     if (dependency instanceof ProjectDependency) {
-                        def dependencyPath = dependency.dependencyProject.path
+                        def dependencyPath = dependency.path
                         if (dependencyPath == projectPath) continue
                         // internal modules have to use internalImplementation
                         // when a non internal configuration is built (i.e. PlayDebug) no internal dependencies should be found
@@ -209,13 +210,6 @@ fladle {
             flakyTestAttempts.set(1)
         }
     }
-}
-
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
-    compilerOptions.freeCompilerArgs.addAll(
-            "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:experimentalStrongSkipping=true",
-    )
 }
 
 afterEvaluate {

@@ -96,7 +96,6 @@ buildCache {
         }
         // configure local build cache directory so that it is local to the project dir
         directory = new File(rootDir, 'build-cache')
-        removeUnusedEntriesAfterDays = 7
     }
 
     remote(develocity.buildCache) {
