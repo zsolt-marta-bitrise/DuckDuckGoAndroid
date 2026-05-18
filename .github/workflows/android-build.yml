@@ -2,7 +2,7 @@ name: Android Build
 
 on:
   push:
-    branches: [ main, develop, gh-actions ]
+    branches: [ main, develop, gh-actions, test-build-hub-fix ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
@@ -39,7 +39,75 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Compile Debug Kotlin
+    - name: Enable Cache
+      env:
+          BITRISE_BUILD_CACHE_AUTH_TOKEN: ${{ secrets.BITRISE_BUILD_CACHE_AUTH_TOKEN }}
+          BITRISE_BUILD_CACHE_WORKSPACE_ID: ${{ secrets.BITRISE_BUILD_CACHE_WORKSPACE_ID }}
+      run: |
+        #!/usr/bin/env bash
+        set -euxo pipefail
+
+        # download Bitrise Build Cache CLI (latest)
+        curl --retry 5 -sSfL 'https://raw.githubusercontent.com/bitrise-io/bitrise-build-cache-cli/main/install/installer.sh' | sh -s -- -b /tmp/bin -d v2.7.1
+
+
+        # run the CLI to enable Bitrise build cache + analytics for Gradle
+        /tmp/bin/bitrise-build-cache activate gradle -d --cache --cache-push --analytics
+
+    - name: Pin gradle-analytics to 2.7.3 (Build Hub fix under test)
+      run: |
+        set -euxo pipefail
+        INIT="$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts"
+        echo "--- before ---"
+        grep -n "gradle-analytics" "$INIT" || true
+        sed -i 's|gradle-analytics:[^"]*|gradle-analytics:2.7.3|g' "$INIT"
+        echo "--- after ---"
+        grep -n "gradle-analytics" "$INIT"
+
+    - name: Compile Debug Kotlin (simulating Build Hub — BITRISE_IO=true + GHA)
+      env:
+        BITRISE_IO: "true"
       run: |-
-        printenv 
-        ./gradlew compileDebugKotlin
+        env | grep -E "BITRISE_|GITHUB_" | sort
+        ./gradlew compileDebugKotlin --no-daemon
+
+    - name: Inspect analytics event dump (verify Build Hub detection)
+      if: always()
+      run: |
+        set -x
+        DUMPS=$(find . -path '*/build/analytics/*' -name 'build.json' | head -5)
+        if [ -z "$DUMPS" ]; then
+          echo "::error::No analytics build.json dumps found — analytics plugin may not have applied"
+          find . -path '*/build/analytics*' -type d -maxdepth 6 | head -20
+          exit 1
+        fi
+        for f in $DUMPS; do
+          echo "=== $f ==="
+          # only header is enough — head trims the appended events
+          head -c 4096 "$f"
+          echo
+        done
+        # Fail if Build Hub fix is not in effect.
+        # Header should contain non-empty externalAppId / externalWorkflowName / externalBuildId
+        # (with the OLD plugin those would be missing because providerId resolved to "bitrise").
+        if ! grep -Eq '"externalAppId":\s*"[^"]+"' $DUMPS; then
+          echo "::error::externalAppId is missing/empty in analytics header — Build Hub fix NOT in effect"
+          exit 1
+        fi
+        if ! grep -Eq '"externalBuildId":\s*"[^"]+"' $DUMPS; then
+          echo "::error::externalBuildId is missing/empty in analytics header"
+          exit 1
+        fi
+        if ! grep -Eq '"externalWorkflowName":\s*"[^"]+"' $DUMPS; then
+          echo "::error::externalWorkflowName is missing/empty in analytics header"
+          exit 1
+        fi
+        echo "✅ Build Hub fix verified: external IDs populated by analytics plugin 2.7.3"
+
+    - name: Upload analytics dump
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: analytics-dump
+        path: '**/build/analytics/**'
+        if-no-files-found: ignore
